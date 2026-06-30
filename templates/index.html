@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Рекомендательный сервис Instacart</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f0f4f8;
+            color: #2d3748;
+            min-height: 100vh;
+            padding: 32px 16px;
+        }
+
+        .container {
+            max-width: 860px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            margin-bottom: 24px;
+            color: #1a365d;
+        }
+
+        /* ── Карточки ── */
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.08);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+            color: #2b6cb0;
+        }
+
+        /* ── Формы ── */
+        .form-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        input[type="text"] {
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 1rem;
+            width: 180px;
+        }
+
+        button {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background .2s;
+        }
+
+        .btn-primary   { background: #3182ce; color: #fff; }
+        .btn-primary:hover { background: #2b6cb0; }
+
+        .btn-success   { background: #38a169; color: #fff; }
+        .btn-success:hover { background: #276749; }
+
+        .btn-secondary { background: #e2e8f0; color: #4a5568; }
+        .btn-secondary:hover { background: #cbd5e0; }
+
+        /* ── Статус пользователя ── */
+        .user-status {
+            font-size: 0.95rem;
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+
+        .user-status span {
+            font-weight: 600;
+            color: #2b6cb0;
+        }
+
+        /* ── Ошибка ── */
+        .error-block {
+            background: #fff5f5;
+            border-left: 4px solid #fc8181;
+            border-radius: 6px;
+            padding: 14px 18px;
+            color: #c53030;
+            margin-bottom: 20px;
+        }
+
+        /* ── Таблица товаров ── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background: #ebf8ff;
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 2px solid #bee3f8;
+            color: #2c5282;
+        }
+
+        td {
+            padding: 9px 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #f7fafc; }
+
+        /* ── Рекомендация ── */
+        .recommendation {
+            background: #f0fff4;
+            border-left: 4px solid #68d391;
+            border-radius: 6px;
+            padding: 16px 20px;
+            line-height: 1.7;
+            color: #22543d;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🛒 Рекомендательный сервис Instacart</h1>
+
+    <!-- Блок ошибки -->
+    {% if error %}
+    <div class="error-block">{{ error }}</div>
+    {% endif %}
+
+    <!-- Авторизация -->
+    <div class="card">
+        <h2>Авторизация</h2>
+
+        {% if user_id %}
+        <p class="user-status">Вы вошли как пользователь <span>#{{ user_id }}</span></p>
+        <div class="form-row">
+            <form method="post" action="/logout">
+                <button type="submit" class="btn-secondary">Выйти</button>
+            </form>
+        </div>
+        {% else %}
+        <form method="post" action="/login">
+            <div class="form-row">
+                <input type="text" name="user_id" placeholder="ID пользователя" required>
+                <button type="submit" class="btn-primary">Авторизоваться</button>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+
+    <!-- Запуск анализа -->
+    {% if user_id %}
+    <div class="card">
+        <h2>Анализ покупок</h2>
+        <form method="post" action="/history">
+            <button type="submit" class="btn-success">Запустить анализ</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- Таблица товаров -->
+    {% if products %}
+    <div class="card">
+        <h2>Топ-10 товаров пользователя #{{ user_id }}</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Название</th>
+                    <th>Отдел</th>
+                    <th>Категория</th>
+                    <th>Заказов</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in products %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ p.product_name or '—' }}</td>
+                    <td>{{ p.department or '—' }}</td>
+                    <td>{{ p.aisle or '—' }}</td>
+                    <td>{{ p.order_count or p.orders_count or '?' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Рекомендация Mistral -->
+    {% if recommendation %}
+    <div class="card">
+        <h2>Персональная рекомендация</h2>
+        <div class="recommendation">{{ recommendation }}</div>
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>
