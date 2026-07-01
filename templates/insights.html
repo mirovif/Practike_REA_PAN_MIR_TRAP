@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Аналитика — Instacart{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Аналитика покупок</h2>
+    <p style="color:#4a5568; margin-bottom:16px">
+        Три умных сервиса на основе вашей истории заказов. Запустите любой или все сразу.
+    </p>
+    <form method="post" action="/insights">
+        <button type="submit" class="btn btn-purple">Запустить все сервисы</button>
+    </form>
+</div>
+
+<!-- ── Сервис 1: Ритм покупок ── -->
+<div class="card" style="border-top: 3px solid #805ad5">
+    <h2>Сервис 1 — Ритм покупок</h2>
+    <p style="color:#4a5568; font-size:.9rem; margin-bottom:14px">
+        Как часто вы делаете заказы и когда стоит ожидать следующий.
+    </p>
+
+    {% if rhythm %}
+    <div class="stats-row">
+        <div class="stat-box">
+            <div class="val">{{ rhythm.avg_days or '—' }}</div>
+            <div class="lbl">Среднее дней<br>между заказами</div>
+        </div>
+        <div class="stat-box">
+            <div class="val">{{ rhythm.min_days or '—' }}</div>
+            <div class="lbl">Минимум<br>дней</div>
+        </div>
+        <div class="stat-box">
+            <div class="val">{{ rhythm.max_days or '—' }}</div>
+            <div class="lbl">Максимум<br>дней</div>
+        </div>
+        <div class="stat-box">
+            <div class="val">{{ rhythm.total_orders or '—' }}</div>
+            <div class="lbl">Всего<br>заказов</div>
+        </div>
+    </div>
+    {% if msg_rhythm %}
+    <div class="msg-block msg-purple">{{ msg_rhythm }}</div>
+    {% endif %}
+    {% else %}
+    <p style="color:#a0aec0; font-size:.9rem">Нет данных — нажмите «Запустить все сервисы».</p>
+    {% endif %}
+</div>
+
+<!-- ── Сервис 2: Забытые товары ── -->
+<div class="card" style="border-top: 3px solid #dd6b20">
+    <h2>Сервис 2 — Товары, которые вы забыли</h2>
+    <p style="color:#4a5568; font-size:.9rem; margin-bottom:14px">
+        Товары, которые вы покупали регулярно, но не заказывали в последних 3 заказах.
+    </p>
+
+    {% if forgotten %}
+    {% if forgotten | length > 0 %}
+    <table>
+        <thead>
+            <tr><th>#</th><th>Название</th><th>Отдел</th><th>Категория</th><th>Куплено раз</th></tr>
+        </thead>
+        <tbody>
+            {% for p in forgotten %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ p.product_name or '—' }}</td>
+                <td>{{ p.department or '—' }}</td>
+                <td>{{ p.aisle or '—' }}</td>
+                <td>{{ p.total_bought or '?' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% if msg_forgotten %}
+    <div class="msg-block msg-orange">{{ msg_forgotten }}</div>
+    {% endif %}
+    {% else %}
+    <p style="color:#a0aec0; font-size:.9rem">Нет данных — нажмите «Запустить все сервисы».</p>
+    {% endif %}
+</div>
+
+<!-- ── Сервис 3: Лучшее время ── -->
+<div class="card" style="border-top: 3px solid #319795">
+    <h2>Сервис 3 — Лучшее время для заказа</h2>
+    <p style="color:#4a5568; font-size:.9rem; margin-bottom:14px">
+        В какой день недели и в какой час вы обычно делаете заказы.
+    </p>
+
+    {% if best_time %}
+    <p style="margin-bottom:12px">
+        Чаще всего вы заказываете в
+        <strong>{{ best_time.best_dow_name }}</strong>
+        около <strong>{{ best_time.best_hour }}:00</strong>
+        ({{ best_time.best_cnt }} раз).
+    </p>
+
+    {% if best_time.heatmap %}
+    <div class="heatmap-wrap">
+        <table class="heatmap" id="heatmapTable"></table>
+    </div>
+    <script>
+    (function(){
+        const DOW = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+        const raw = {{ best_time.heatmap | tojson }};
+        const grid = {};
+        const hours = new Set();
+        raw.forEach(r => {
+            hours.add(r.order_hour_of_day);
+            grid[r.order_dow + '_' + r.order_hour_of_day] = r.cnt;
+        });
+        const hList = Array.from(hours).sort((a,b)=>a-b);
+        const maxVal = Math.max(...Object.values(grid));
+
+        const tbl = document.getElementById('heatmapTable');
+        let html = '<tr><th>День / Час</th>';
+        hList.forEach(h => html += `<th>${h}</th>`);
+        html += '</tr>';
+        for(let d=0; d<7; d++){
+            html += `<tr><th>${DOW[d]}</th>`;
+            hList.forEach(h => {
+                const v = grid[d+'_'+h] || 0;
+                const alpha = maxVal ? (v/maxVal*0.8+0.05).toFixed(2) : 0.05;
+                const textColor = v > maxVal*0.5 ? '#fff' : '#2d3748';
+                html += `<td style="background:rgba(49,130,206,${alpha});color:${textColor}">${v||''}</td>`;
+            });
+            html += '</tr>';
+        }
+        tbl.innerHTML = html;
+    })();
+    </script>
+    {% endif %}
+
+    {% if msg_best_time %}
+    <div class="msg-block msg-teal">{{ msg_best_time }}</div>
+    {% endif %}
+    {% else %}
+    <p style="color:#a0aec0; font-size:.9rem">Нет данных — нажмите «Запустить все сервисы».</p>
+    {% endif %}
+</div>
+{% endblock %}

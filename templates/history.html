@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Мои покупки — Instacart{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Мои покупки</h2>
+    <p style="color:#4a5568; margin-bottom:16px">
+        Топ-10 товаров по частоте заказов и персональная рекомендация от Mistral AI.
+    </p>
+    <form method="post" action="/history">
+        <button type="submit" class="btn btn-green">Обновить анализ</button>
+    </form>
+</div>
+
+{% if products %}
+<div class="card">
+    <h2>Топ-10 товаров — покупатель #{{ session.get('user_id') }}</h2>
+    <table>
+        <thead>
+            <tr><th>#</th><th>Название</th><th>Отдел</th><th>Категория</th><th>Заказов</th></tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ p.product_name or '—' }}</td>
+                <td>{{ p.department_rus or p.department or '—' }}</td>
+                <td>{{ p.aisle or '—' }}</td>
+                <td>{{ p.order_count or '?' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="charts-row">
+        <div class="chart-wrap">
+            <canvas id="chartProducts" width="320" height="320"></canvas>
+            <p>По товарам</p>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="chartDepts" width="320" height="320"></canvas>
+            <p>По отделам</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+    const COLORS = ['#4299e1','#48bb78','#ed8936','#e53e3e','#9f7aea',
+                    '#38b2ac','#f6e05e','#fc8181','#68d391','#76e4f7'];
+    const products = [{% for p in products %}
+        {name: {{ (p.product_name or '—') | tojson }}, orders: {{ p.order_count or 0 }}},
+    {% endfor %}];
+    const total = products.reduce((s,p)=>s+p.orders, 0);
+
+    new Chart(document.getElementById('chartProducts'), {
+        type: 'doughnut',
+        data: {
+            labels: products.map(p=>p.name),
+            datasets: [{data: products.map(p=>p.orders),
+                        backgroundColor: COLORS, borderWidth: 2, borderColor:'#fff'}]
+        },
+        options: { plugins: {
+            legend: {position:'bottom', labels:{font:{size:10}, boxWidth:12}},
+            tooltip: { callbacks: { label: c =>
+                ` ${c.label}: ${c.parsed} (${((c.parsed/total)*100).toFixed(1)}%)` } }
+        }}
+    });
+
+    const deptMap = {};
+    {% for p in products %}
+    { const d = {{ (p.department_rus or p.department or '—') | tojson }};
+      deptMap[d] = (deptMap[d]||0) + {{ p.order_count or 0 }}; }
+    {% endfor %}
+    const dTotal = Object.values(deptMap).reduce((s,v)=>s+v, 0);
+    new Chart(document.getElementById('chartDepts'), {
+        type: 'pie',
+        data: {
+            labels: Object.keys(deptMap),
+            datasets: [{data: Object.values(deptMap),
+                        backgroundColor: COLORS, borderWidth: 2, borderColor:'#fff'}]
+        },
+        options: { plugins: {
+            legend: {position:'bottom', labels:{font:{size:10}, boxWidth:12}},
+            tooltip: { callbacks: { label: c =>
+                ` ${c.label}: ${c.parsed} (${((c.parsed/dTotal)*100).toFixed(1)}%)` } }
+        }}
+    });
+    </script>
+</div>
+
+{% if recommendation %}
+<div class="card">
+    <h2>Рекомендация Mistral AI</h2>
+    <div class="msg-block msg-green">{{ recommendation }}</div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="card" style="text-align:center; color:#718096; padding:40px">
+    Нажмите «Обновить анализ» чтобы загрузить историю покупок.
+</div>
+{% endif %}
+{% endblock %}

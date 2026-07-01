@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Instacart{% endblock %}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f0f4f8;
+            color: #2d3748;
+            min-height: 100vh;
+        }
+
+        /* ── Шапка ── */
+        header {
+            background: #1a365d;
+            color: #fff;
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,.3);
+        }
+
+        .logo { font-size: 1.1rem; font-weight: 700; letter-spacing: .5px; }
+        .logo span { color: #63b3ed; }
+
+        nav { display: flex; gap: 4px; }
+
+        nav a {
+            color: #bee3f8;
+            text-decoration: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: background .15s, color .15s;
+        }
+
+        nav a:hover { background: rgba(255,255,255,.12); color: #fff; }
+        nav a.active { background: #2b6cb0; color: #fff; }
+
+        .header-user {
+            font-size: 0.85rem;
+            color: #90cdf4;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-user form button {
+            background: rgba(255,255,255,.15);
+            border: 1px solid rgba(255,255,255,.25);
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .header-user form button:hover { background: rgba(255,255,255,.25); }
+
+        /* ── Контент ── */
+        .page { max-width: 940px; margin: 0 auto; padding: 32px 16px; }
+
+        /* ── Карточки ── */
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.08);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .card h2 { font-size: 1.15rem; margin-bottom: 16px; color: #2b6cb0; }
+        .card h3 { font-size: 0.95rem; margin: 14px 0 8px; color: #4a5568; }
+
+        /* ── Кнопки ── */
+        .btn {
+            display: inline-block;
+            padding: 9px 20px;
+            border: none;
+            border-radius: 7px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+            transition: filter .15s;
+        }
+        .btn:hover { filter: brightness(0.9); }
+        .btn-blue   { background: #3182ce; color: #fff; }
+        .btn-green  { background: #38a169; color: #fff; }
+        .btn-purple { background: #805ad5; color: #fff; }
+        .btn-orange { background: #dd6b20; color: #fff; }
+        .btn-teal   { background: #319795; color: #fff; }
+        .btn-gray   { background: #e2e8f0; color: #4a5568; }
+
+        /* ── Формы ── */
+        .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+        input[type="text"] {
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            padding: 9px 13px;
+            font-size: 1rem;
+            width: 200px;
+        }
+
+        /* ── Ошибка ── */
+        .error-block {
+            background: #fff5f5;
+            border-left: 4px solid #fc8181;
+            border-radius: 6px;
+            padding: 14px 18px;
+            color: #c53030;
+            margin-bottom: 20px;
+        }
+
+        /* ── Таблица ── */
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th { background: #ebf8ff; text-align: left; padding: 9px 11px;
+             border-bottom: 2px solid #bee3f8; color: #2c5282; }
+        td { padding: 8px 11px; border-bottom: 1px solid #e2e8f0; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #f7fafc; }
+
+        /* ── Сообщение от Mistral ── */
+        .msg-block {
+            border-radius: 6px; padding: 15px 18px;
+            line-height: 1.75; margin-top: 14px;
+        }
+        .msg-green  { background: #f0fff4; border-left: 4px solid #68d391; color: #22543d; }
+        .msg-purple { background: #faf5ff; border-left: 4px solid #b794f4; color: #44337a; }
+        .msg-orange { background: #fffaf0; border-left: 4px solid #f6ad55; color: #7b341e; }
+        .msg-teal   { background: #e6fffa; border-left: 4px solid #4fd1c5; color: #234e52; }
+
+        /* ── Диаграммы ── */
+        .charts-row { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; margin-top: 18px; }
+        .chart-wrap { flex: 1; min-width: 240px; max-width: 360px; text-align: center; }
+        .chart-wrap p { font-size: 0.8rem; color: #718096; margin-top: 6px; }
+
+        /* ── Ритм-статистика ── */
+        .stats-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+        .stat-box { flex: 1; min-width: 90px; background: #ebf8ff; border-radius: 8px;
+                    padding: 14px; text-align: center; }
+        .stat-box .val { font-size: 1.7rem; font-weight: 700; color: #2b6cb0; }
+        .stat-box .lbl { font-size: 0.75rem; color: #4a5568; margin-top: 4px; }
+
+        /* ── Тепловая карта ── */
+        .heatmap-wrap { overflow-x: auto; margin-top: 14px; }
+        .heatmap { border-collapse: collapse; font-size: 0.76rem; }
+        .heatmap th, .heatmap td {
+            border: 1px solid #e2e8f0; padding: 4px 6px;
+            text-align: center; min-width: 32px;
+        }
+        .heatmap th { background: #ebf8ff; color: #2c5282; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">Instacart <span>AI</span></div>
+
+    <nav>
+        <a href="/" {% if request.path == '/' %}class="active"{% endif %}>Личный кабинет</a>
+        {% if session.get('user_id') %}
+        <a href="/history" {% if request.path == '/history' %}class="active"{% endif %}>Мои покупки</a>
+        <a href="/insights" {% if request.path == '/insights' %}class="active"{% endif %}>Аналитика</a>
+        {% endif %}
+    </nav>
+
+    <div class="header-user">
+        {% if session.get('user_id') %}
+            Пользователь #{{ session.get('user_id') }}
+            <form method="post" action="/logout">
+                <button type="submit">Выйти</button>
+            </form>
+        {% else %}
+            <span>Не авторизован</span>
+        {% endif %}
+    </div>
+</header>
+
+<div class="page">
+    {% if error %}
+    <div class="error-block">{{ error }}</div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+</div>
+
+</body>
+</html>
