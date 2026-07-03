@@ -10,7 +10,6 @@
         Вы вошли как <strong>покупатель #{{ session.get('user_id') }}</strong>.
         Выберите раздел в меню или воспользуйтесь быстрыми кнопками ниже.
     </p>
-
     <div style="display:flex; gap:14px; flex-wrap:wrap">
         <a href="/history" class="btn btn-green">Мои покупки</a>
         <a href="/insights" class="btn btn-purple">Аналитика</a>
@@ -21,7 +20,6 @@
         Войдите по ID покупателя, чтобы получить доступ к персональным рекомендациям
         и аналитике ваших заказов.
     </p>
-
     <form method="post" action="/login">
         <div class="form-row">
             <input type="text" name="user_id" placeholder="ID покупателя (например, 1)" required>
@@ -31,7 +29,87 @@
     {% endif %}
 </div>
 
-{% if not session.get('user_id') %}
+{% if session.get('user_id') %}
+
+<!-- Профиль клиента (из сессии после первого запуска /history) -->
+{% if client_level %}
+{% set lc = {'Новичок':'level-newbie','Постоянный':'level-regular','Лояльный':'level-loyal','VIP':'level-vip'} %}
+<div class="card">
+    <h2>Профиль клиента</h2>
+    <span class="level-badge {{ lc.get(client_level.level, 'level-newbie') }}">
+        {{ client_level.emoji }} {{ client_level.level }}
+    </span>
+    <div class="profile-grid">
+        <span class="lbl">Описание</span>     <span class="val">{{ client_level.description }}</span>
+        <span class="lbl">Всего заказов</span><span class="val">{{ client_level.total_orders }}</span>
+        <span class="lbl">Ср. частота</span>  <span class="val">{{ client_level.avg_frequency }} заказов на товар</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Вас может заинтересовать -->
+<div class="card">
+    <h2>Вас может заинтересовать</h2>
+    <p style="color:#4a5568; font-size:.9rem; margin-bottom:16px">
+        Персональные рекомендации на основе ваших категорий покупок от Mistral AI.
+    </p>
+    <button class="btn btn-blue" id="recBtn" onclick="getRecommendations()">
+        Получить предложения
+    </button>
+    <div id="recError" style="display:none; margin-top:12px" class="error-block"></div>
+    <div id="recCards" class="rec-grid" style="display:none"></div>
+</div>
+
+<script>
+async function getRecommendations() {
+    const btn = document.getElementById('recBtn');
+    btn.disabled = true;
+    btn.textContent = 'Загружаем...';
+
+    try {
+        const resp = await fetch('/recommend', {method: 'POST'});
+        const data = await resp.json();
+
+        if (data.error) {
+            document.getElementById('recError').textContent = data.error;
+            document.getElementById('recError').style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Получить предложения';
+            return;
+        }
+
+        const container = document.getElementById('recCards');
+        container.innerHTML = data.items.map(item => `
+            <div class="rec-card">
+                <div class="rec-name">${item}</div>
+                <button class="btn btn-green btn-sm" onclick="addToCart(this)">
+                    Добавить в корзину
+                </button>
+            </div>
+        `).join('');
+        container.style.display = 'grid';
+        btn.style.display = 'none';
+    } catch(e) {
+        document.getElementById('recError').textContent = 'Ошибка соединения. Попробуйте позже.';
+        document.getElementById('recError').style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Получить предложения';
+    }
+}
+
+function addToCart(btn) {
+    const orig = btn.textContent;
+    btn.textContent = '✅ Добавлено!';
+    btn.disabled = true;
+    setTimeout(() => {
+        btn.textContent = orig;
+        btn.disabled = false;
+    }, 2000);
+}
+</script>
+
+{% else %}
+<!-- Описание сервисов для незалогиненных -->
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px">
     <div class="card" style="border-top:3px solid #38a169">
         <h3 style="color:#276749; margin-bottom:8px">Мои покупки</h3>

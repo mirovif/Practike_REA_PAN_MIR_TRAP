@@ -7,14 +7,32 @@
     <p style="color:#4a5568; margin-bottom:16px">
         Топ-10 товаров по частоте заказов и персональная рекомендация от Mistral AI.
     </p>
-    <form method="post" action="/history">
+    <form method="post" action="/history" id="analysisForm">
         <button type="submit" class="btn btn-green">Обновить анализ</button>
     </form>
 </div>
 
+{% if client_level %}
+{% set lc = {'Новичок':'level-newbie','Постоянный':'level-regular','Лояльный':'level-loyal','VIP':'level-vip'} %}
+<div class="card">
+    <h2>Профиль клиента</h2>
+    <span class="level-badge {{ lc.get(client_level.level, 'level-newbie') }}">
+        {{ client_level.emoji }} {{ client_level.level }}
+    </span>
+    <div class="profile-grid">
+        <span class="lbl">Описание</span>     <span class="val">{{ client_level.description }}</span>
+        <span class="lbl">Всего заказов</span><span class="val">{{ client_level.total_orders }}</span>
+        <span class="lbl">Ср. частота</span>  <span class="val">{{ client_level.avg_frequency }} заказов на товар</span>
+    </div>
+</div>
+{% endif %}
+
 {% if products %}
 <div class="card">
-    <h2>Топ-10 товаров — покупатель #{{ session.get('user_id') }}</h2>
+    <h2>
+        Топ-10 товаров — покупатель #{{ session.get('user_id') }}
+        {% if from_cache %}<span class="cache-badge">из кэша</span>{% endif %}
+    </h2>
     <table>
         <thead>
             <tr><th>#</th><th>Название</th><th>Отдел</th><th>Категория</th><th>Заказов</th></tr>
@@ -62,7 +80,7 @@
         options: { plugins: {
             legend: {position:'bottom', labels:{font:{size:10}, boxWidth:12}},
             tooltip: { callbacks: { label: c =>
-                ` ${c.label}: ${c.parsed} (${((c.parsed/total)*100).toFixed(1)}%)` } }
+                ` ${c.label}: ${c.parsed} (${((c.parsed/total)*100).toFixed(1)}%)` }}
         }}
     });
 
@@ -82,7 +100,7 @@
         options: { plugins: {
             legend: {position:'bottom', labels:{font:{size:10}, boxWidth:12}},
             tooltip: { callbacks: { label: c =>
-                ` ${c.label}: ${c.parsed} (${((c.parsed/dTotal)*100).toFixed(1)}%)` } }
+                ` ${c.label}: ${c.parsed} (${((c.parsed/dTotal)*100).toFixed(1)}%)` }}
         }}
     });
     </script>
@@ -91,8 +109,29 @@
 {% if recommendation %}
 <div class="card">
     <h2>Рекомендация Mistral AI</h2>
-    <div class="msg-block msg-green">{{ recommendation }}</div>
+    <div class="msg-block msg-green" id="recText">{{ recommendation }}</div>
+    <div class="cta-row">
+        <button class="btn btn-gray" onclick="copyRec(this)">📋 Скопировать</button>
+        <button class="btn btn-gray" onclick="refreshAnalysis(this)">🔄 Обновить анализ</button>
+        <button class="btn btn-gray" onclick="window.print()">⬇️ Скачать PDF</button>
+    </div>
 </div>
+<script>
+function copyRec(btn) {
+    const text = document.getElementById('recText').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = '✅ Скопировано!';
+        setTimeout(() => btn.textContent = orig, 2000);
+    }).catch(() => alert('Не удалось скопировать. Разрешите доступ к буферу обмена.'));
+}
+async function refreshAnalysis(btn) {
+    btn.disabled = true;
+    await fetch('/cache/clear', {method: 'POST'});
+    showOverlay(['Сбрасываем кэш...', 'Загружаем свежие данные...', 'Готовим рекомендации...']);
+    document.getElementById('analysisForm').submit();
+}
+</script>
 {% endif %}
 
 {% else %}
@@ -100,4 +139,10 @@
     Нажмите «Обновить анализ» чтобы загрузить историю покупок.
 </div>
 {% endif %}
+
+<script>
+document.getElementById('analysisForm').addEventListener('submit', function() {
+    showOverlay();
+});
+</script>
 {% endblock %}

@@ -7,9 +7,18 @@
     <p style="color:#4a5568; margin-bottom:16px">
         Три умных сервиса на основе вашей истории заказов. Запустите любой или все сразу.
     </p>
-    <form method="post" action="/insights">
+    <form method="post" action="/insights" id="insightsForm">
         <button type="submit" class="btn btn-purple">Запустить все сервисы</button>
     </form>
+    <script>
+    document.getElementById('insightsForm').addEventListener('submit', function() {
+        showOverlay([
+            'Анализируем ритм покупок...',
+            'Ищем забытые товары...',
+            'Определяем лучшее время...'
+        ]);
+    });
+    </script>
 </div>
 
 <!-- ── Сервис 1: Ритм покупок ── -->
