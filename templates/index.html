@@ -81,7 +81,8 @@ async function getRecommendations() {
         const container = document.getElementById('recCards');
         container.innerHTML = data.items.map(item => `
             <div class="rec-card">
-                <div class="rec-name">${item}</div>
+                <div class="rec-name">${item.product_name}</div>
+                ${item.aisle !== '—' ? `<div style="font-size:.78rem;color:#718096;margin-bottom:10px">${item.aisle}${item.department !== '—' ? ' · ' + item.department : ''}</div>` : ''}
                 <button class="btn btn-green btn-sm" onclick="addToCart(this)">
                     Добавить в корзину
                 </button>

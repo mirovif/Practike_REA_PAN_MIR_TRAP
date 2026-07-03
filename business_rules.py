@@ -1,5 +1,6 @@
 import os
 import time
+import sqlite3
 import requests
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -16,6 +17,7 @@ LOGINOM_URL_RHYTHM    = os.getenv("LOGINOM_URL_RHYTHM")
 LOGINOM_URL_FORGOTTEN = os.getenv("LOGINOM_URL_FORGOTTEN")
 LOGINOM_URL_BEST_TIME = os.getenv("LOGINOM_URL_BEST_TIME")
 
+DB_PATH         = os.getenv("DB_PATH", "instacart_db.sqlite")
 MISTRAL_MODEL   = "mistral-small-latest"
 _mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 
@@ -191,38 +193,70 @@ def get_client_level(rows: list[dict]) -> dict:
 
 # ── Рекомендации «Вас может заинтересовать» ──────────────────────────────────
 
-def get_recommendations(user_id: int, rows: list[dict]) -> list[str]:
+def get_recommendations(user_id: int, rows: list[dict]) -> list[dict]:
     key = f"recommend_{user_id}"
     cached, hit = _cache_get(key)
     if hit:
         return cached
 
+    # Топ-3 категории по количеству заказов
     aisle_counts: dict = defaultdict(int)
     for r in rows:
         aisle_counts[r.get("aisle", "")] += r.get("order_count", 0)
     top_aisles = sorted(aisle_counts.items(), key=lambda x: x[1], reverse=True)[:3]
     categories = ", ".join(a for a, _ in top_aisles if a)
 
+    # Mistral предлагает названия на английском для поиска в БД
     user_message = (
-        f"Покупатель регулярно берёт товары из категорий: {categories}. "
-        "Предложи ровно 3 конкретных товара, которых нет в его истории, "
-        "но которые ему точно понравятся. "
-        "Строго нумерованный список: «1. Название», «2. Название», «3. Название». "
-        "Только названия, без объяснений. На русском языке."
+        f"The customer regularly buys from these grocery categories: {categories}. "
+        "Suggest exactly 3 specific product names in English that are commonly found "
+        "in a grocery store and would appeal to this customer. "
+        "Reply with ONLY a numbered list: «1. Product Name», «2. Product Name», «3. Product Name». "
+        "No explanations, just short product names in English."
     )
     resp = _mistral_client.chat.complete(
         model=MISTRAL_MODEL,
         messages=[{"role": "user", "content": user_message}],
     )
     text = resp.choices[0].message.content.strip()
-    items = []
+
+    # Парсим названия из ответа
+    suggested = []
     for line in text.split("\n"):
         line = line.strip()
         if line and line[0].isdigit():
-            item = line.split(".", 1)[-1].strip().lstrip("–—- ")
-            if item:
-                items.append(item)
-    result = items[:3]
+            name = line.split(".", 1)[-1].strip().lstrip("–—- ").strip()
+            if name:
+                suggested.append(name)
+    suggested = suggested[:3]
+
+    # Ищем реальные товары в базе продуктов (SQLite)
+    found = []
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        for name in suggested:
+            words = name.split()
+            # Пробуем первые 2 слова, затем только первое
+            for attempt in [" ".join(words[:2]), words[0]]:
+                cur = conn.execute(
+                    "SELECT product_name, aisle, department FROM products "
+                    "WHERE product_name LIKE ? LIMIT 1",
+                    (f"%{attempt}%",)
+                )
+                row = cur.fetchone()
+                if row:
+                    found.append(dict(row))
+                    break
+            else:
+                # Ничего не нашли — добавляем AI-название как fallback
+                found.append({"product_name": name, "aisle": "—", "department": "—"})
+        conn.close()
+    except Exception:
+        # Если SQLite недоступен — возвращаем AI-названия
+        found = [{"product_name": n, "aisle": "—", "department": "—"} for n in suggested]
+
+    result = found[:3]
     _cache_set(key, result, CACHE_TTL_MISTRAL)
     return result
 
