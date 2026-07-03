@@ -45,11 +45,16 @@ def _loginom_get(url: str, user_id: int) -> list | dict:
     except Exception as e:
         raise RuntimeError(f"Ошибка запроса к Loginom: {e}") from e
 
-    # Loginom может вернуть список или {"data": [...]}
+    # Loginom возвращает {"DataSet": {"Rows": [...]}}
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        for key in ("data", "rows", "result", "items"):
+        # формат Loginom
+        if "DataSet" in data and isinstance(data["DataSet"], dict):
+            rows = data["DataSet"].get("Rows", [])
+            if isinstance(rows, list):
+                return rows
+        for key in ("data", "rows", "Rows", "result", "items"):
             if key in data and isinstance(data[key], list):
                 return data[key]
         return data
