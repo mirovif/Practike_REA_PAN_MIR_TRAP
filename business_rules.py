@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import sqlite3
 import requests
 from collections import defaultdict
@@ -18,6 +19,7 @@ LOGINOM_URL_FORGOTTEN = os.getenv("LOGINOM_URL_FORGOTTEN")
 LOGINOM_URL_BEST_TIME = os.getenv("LOGINOM_URL_BEST_TIME")
 
 DB_PATH         = os.getenv("DB_PATH", "instacart_db.sqlite")
+CACHE_DB        = os.getenv("CACHE_DB", "cache.db")
 MISTRAL_MODEL   = "mistral-small-latest"
 _mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 
@@ -40,30 +42,60 @@ _GREETINGS = [
     "привет", "уважаемый", "уважаемая", "рады приветствовать",
 ]
 
-# ── Кэш (in-memory, TTL) ─────────────────────────────────────────────────────
+# ── Кэш (SQLite, персистентный, TTL) ─────────────────────────────────────────
 CACHE_TTL_HISTORY = 300   # 5 минут
 CACHE_TTL_MISTRAL = 600   # 10 минут
-_cache: dict = {}
+
+
+def _cache_conn():
+    conn = sqlite3.connect(CACHE_DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cache (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            expires_at REAL NOT NULL
+        )
+    """)
+    conn.commit()
+    return conn
 
 
 def _cache_get(key: str):
-    entry = _cache.get(key)
-    if entry:
-        val, expires = entry
-        if time.time() < expires:
-            return val, True
-        del _cache[key]
+    try:
+        with _cache_conn() as conn:
+            row = conn.execute(
+                "SELECT value, expires_at FROM cache WHERE key = ?", (key,)
+            ).fetchone()
+        if row:
+            value, expires_at = row
+            if time.time() < expires_at:
+                return json.loads(value), True
+            # просрочено — удаляем
+            with _cache_conn() as conn:
+                conn.execute("DELETE FROM cache WHERE key = ?", (key,))
+    except Exception:
+        pass
     return None, False
 
 
 def _cache_set(key: str, val, ttl: int):
-    _cache[key] = (val, time.time() + ttl)
+    try:
+        with _cache_conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO cache (key, value, expires_at) VALUES (?, ?, ?)",
+                (key, json.dumps(val, ensure_ascii=False), time.time() + ttl)
+            )
+    except Exception:
+        pass
 
 
 def cache_clear_user(user_id: int):
-    keys = [k for k in list(_cache) if f"_{user_id}" in k]
-    for k in keys:
-        _cache.pop(k, None)
+    keys = [f"history_{user_id}", f"mistral_{user_id}", f"recommend_{user_id}"]
+    try:
+        with _cache_conn() as conn:
+            conn.executemany("DELETE FROM cache WHERE key = ?", [(k,) for k in keys])
+    except Exception:
+        pass
 
 
 # ── Вспомогательные ──────────────────────────────────────────────────────────
