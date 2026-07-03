@@ -237,24 +237,26 @@ def get_recommendations(user_id: int, rows: list[dict]) -> list[dict]:
         conn.row_factory = sqlite3.Row
         for name in suggested:
             words = name.split()
-            # Пробуем первые 2 слова, затем только первое
+            db_row = None
             for attempt in [" ".join(words[:2]), words[0]]:
                 cur = conn.execute(
                     "SELECT product_name, aisle, department FROM products "
                     "WHERE product_name LIKE ? LIMIT 1",
                     (f"%{attempt}%",)
                 )
-                row = cur.fetchone()
-                if row:
-                    found.append(dict(row))
+                db_row = cur.fetchone()
+                if db_row:
                     break
-            else:
-                # Ничего не нашли — добавляем AI-название как fallback
-                found.append({"product_name": name, "aisle": "—", "department": "—"})
+            found.append({
+                "suggested":    name,                                         # AI-ключевое слово
+                "product_name": db_row["product_name"] if db_row else None,  # реальный товар из БД
+                "aisle":        db_row["aisle"]        if db_row else "—",
+                "department":   db_row["department"]   if db_row else "—",
+            })
         conn.close()
     except Exception:
-        # Если SQLite недоступен — возвращаем AI-названия
-        found = [{"product_name": n, "aisle": "—", "department": "—"} for n in suggested]
+        found = [{"suggested": n, "product_name": None, "aisle": "—", "department": "—"}
+                 for n in suggested]
 
     result = found[:3]
     _cache_set(key, result, CACHE_TTL_MISTRAL)

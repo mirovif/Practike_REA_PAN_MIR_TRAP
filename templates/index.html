@@ -51,7 +51,7 @@
 <div class="card">
     <h2>Вас может заинтересовать</h2>
     <p style="color:#4a5568; font-size:.9rem; margin-bottom:16px">
-        Персональные рекомендации на основе ваших категорий покупок от Mistral AI.
+        Проанализировали ваши покупки и исходя из ваших предпочтений подобрали товары по ключевым словам.
     </p>
     <button class="btn btn-blue" id="recBtn" onclick="getRecommendations()">
         Получить предложения
@@ -81,8 +81,9 @@ async function getRecommendations() {
         const container = document.getElementById('recCards');
         container.innerHTML = data.items.map(item => `
             <div class="rec-card">
-                <div class="rec-name">${item.product_name}</div>
-                ${item.aisle !== '—' ? `<div style="font-size:.78rem;color:#718096;margin-bottom:10px">${item.aisle}${item.department !== '—' ? ' · ' + item.department : ''}</div>` : ''}
+                <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.6px;color:#a0aec0;margin-bottom:4px">🔑 ${item.suggested}</div>
+                <div class="rec-name">${item.product_name || item.suggested}</div>
+                ${item.aisle !== '—' ? `<div style="font-size:.76rem;color:#718096;margin-bottom:10px">${item.aisle}${item.department !== '—' ? ' · ' + item.department : ''}</div>` : '<div style="margin-bottom:10px"></div>'}
                 <button class="btn btn-green btn-sm" onclick="addToCart(this)">
                     Добавить в корзину
                 </button>
