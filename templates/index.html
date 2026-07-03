@@ -57,6 +57,7 @@
         Получить предложения
     </button>
     <div id="recError" style="display:none; margin-top:12px" class="error-block"></div>
+    <div id="recKeywords" style="display:none; margin:12px 0 4px"></div>
     <div id="recCards" class="rec-grid" style="display:none"></div>
 </div>
 
@@ -77,6 +78,13 @@ async function getRecommendations() {
             btn.textContent = 'Получить предложения';
             return;
         }
+
+        // Ключевые слова над карточками
+        const kwDiv = document.getElementById('recKeywords');
+        const keywords = data.items.map(i => i.suggested).filter(Boolean);
+        kwDiv.innerHTML = '<span style="font-size:.8rem;color:#718096;margin-right:6px">Ключевые слова:</span>'
+            + keywords.map(k => `<span style="display:inline-block;background:#ebf8ff;color:#2b6cb0;border:1px solid #bee3f8;border-radius:12px;padding:2px 10px;font-size:.78rem;margin:2px">${k}</span>`).join('');
+        kwDiv.style.display = 'block';
 
         const container = document.getElementById('recCards');
         container.innerHTML = data.items.map(item => `
