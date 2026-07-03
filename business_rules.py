@@ -206,13 +206,15 @@ def get_recommendations(user_id: int, rows: list[dict]) -> list[dict]:
     top_aisles = sorted(aisle_counts.items(), key=lambda x: x[1], reverse=True)[:3]
     categories = ", ".join(a for a, _ in top_aisles if a)
 
-    # Mistral предлагает названия на английском для поиска в БД
+    # Mistral рекомендует по-русски и переводит на английский для поиска в БД
     user_message = (
-        f"The customer regularly buys from these grocery categories: {categories}. "
-        "Suggest exactly 3 specific product names in English that are commonly found "
-        "in a grocery store and would appeal to this customer. "
-        "Reply with ONLY a numbered list: «1. Product Name», «2. Product Name», «3. Product Name». "
-        "No explanations, just short product names in English."
+        f"Покупатель регулярно берёт товары из категорий: {categories}. "
+        "Порекомендуй ровно 3 товара, которые ему понравятся. "
+        "Отвечай строго в формате нумерованного списка:\n"
+        "1. Русское название / English keyword\n"
+        "2. Русское название / English keyword\n"
+        "3. Русское название / English keyword\n"
+        "Только названия, без объяснений. English keyword — одно-два слова для поиска в базе."
     )
     resp = _mistral_client.chat.complete(
         model=MISTRAL_MODEL,
@@ -220,23 +222,26 @@ def get_recommendations(user_id: int, rows: list[dict]) -> list[dict]:
     )
     text = resp.choices[0].message.content.strip()
 
-    # Парсим названия из ответа
-    suggested = []
+    # Парсим «Русское / English» из каждой строки
+    suggested = []  # [(ru, en), ...]
     for line in text.split("\n"):
         line = line.strip()
         if line and line[0].isdigit():
-            name = line.split(".", 1)[-1].strip().lstrip("–—- ").strip()
-            if name:
-                suggested.append(name)
+            pair = line.split(".", 1)[-1].strip()
+            if "/" in pair:
+                ru, en = pair.split("/", 1)
+                suggested.append((ru.strip(), en.strip()))
+            else:
+                suggested.append((pair.strip(), pair.strip()))
     suggested = suggested[:3]
 
-    # Ищем реальные товары в базе продуктов (SQLite)
+    # Ищем реальные товары в базе продуктов (SQLite) по английскому ключевому слову
     found = []
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
-        for name in suggested:
-            words = name.split()
+        for ru_name, en_name in suggested:
+            words = en_name.split()
             db_row = None
             for attempt in [" ".join(words[:2]), words[0]]:
                 cur = conn.execute(
@@ -248,15 +253,15 @@ def get_recommendations(user_id: int, rows: list[dict]) -> list[dict]:
                 if db_row:
                     break
             found.append({
-                "suggested":    name,                                         # AI-ключевое слово
+                "suggested":    ru_name,                                      # русское слово для показа
                 "product_name": db_row["product_name"] if db_row else None,  # реальный товар из БД
                 "aisle":        db_row["aisle"]        if db_row else "—",
                 "department":   db_row["department"]   if db_row else "—",
             })
         conn.close()
     except Exception:
-        found = [{"suggested": n, "product_name": None, "aisle": "—", "department": "—"}
-                 for n in suggested]
+        found = [{"suggested": ru, "product_name": None, "aisle": "—", "department": "—"}
+                 for ru, _ in suggested]
 
     result = found[:3]
     _cache_set(key, result, CACHE_TTL_MISTRAL)
