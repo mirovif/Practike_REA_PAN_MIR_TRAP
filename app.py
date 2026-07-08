@@ -149,6 +149,40 @@ def cache_clear():
     return jsonify({"ok": True})
 
 
+# ── /dashboard — Админ-дашборд ───────────────────────────────────────────────
+
+@app.route("/dashboard", methods=["GET", "POST"])
+def dashboard():
+    redir = require_auth()
+    if redir:
+        return redir
+
+    stats = summary = None
+    from_cache = False
+
+    if request.method == "POST":
+        try:
+            from business_rules import get_dashboard_stats, ask_mistral_dashboard
+            stats      = get_dashboard_stats()
+            from_cache = stats.get("from_cache", False)
+            summary    = ask_mistral_dashboard(stats)
+        except Exception as e:
+            return render_template("dashboard.html", error=str(e))
+
+    return render_template("dashboard.html",
+                           stats=stats, summary=summary, from_cache=from_cache)
+
+
+@app.route("/dashboard/refresh", methods=["POST"])
+def dashboard_refresh():
+    redir = require_auth()
+    if redir:
+        return redirect(url_for("index"))
+    from business_rules import cache_clear_dashboard
+    cache_clear_dashboard()
+    return redirect(url_for("dashboard"))
+
+
 # ── JSON API ──────────────────────────────────────────────────────────────────
 
 @app.route("/api/history", methods=["POST"])

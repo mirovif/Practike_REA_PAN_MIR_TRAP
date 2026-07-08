@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — Instacart{% endblock %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<div class="card" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
+    <div>
+        <h2 style="margin-bottom:4px">
+            Административный дашборд
+            {% if from_cache %}<span class="cache-badge">из кэша</span>{% endif %}
+        </h2>
+        {% if stats and stats.meta.get('generated_at') %}
+        <div style="font-size:.8rem; color:#718096">Данные на {{ stats.meta.generated_at }} · Кэш 30 мин</div>
+        {% endif %}
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <form method="post" action="/dashboard">
+            <button type="submit" class="btn btn-blue"
+                    onclick="showOverlay(['Загружаем топ товаров...','Считаем уровни клиентов...','Анализируем интервалы...','Собираем выводы...'])">
+                {% if stats %}Обновить{% else %}Загрузить данные{% endif %}
+            </button>
+        </form>
+        {% if stats %}
+        <form method="post" action="/dashboard/refresh">
+            <button type="submit" class="btn btn-gray btn-sm">Сбросить кэш</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{% if error %}
+<div class="error-block">{{ error }}</div>
+{% endif %}
+
+{% if stats and stats.errors %}
+<div class="error-block">
+    <strong>Некоторые блоки недоступны:</strong>
+    <ul style="margin:6px 0 0 18px">
+        {% for e in stats.errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if not stats %}
+<!-- Заглушки до первой загрузки -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px">
+    <div class="card" style="text-align:center; color:#a0aec0; padding:40px 20px">
+        <div style="font-size:2rem; margin-bottom:10px">📦</div>
+        <div>Топ-10 товаров</div>
+        <div style="font-size:.8rem; margin-top:6px">Нажмите кнопку «Загрузить данные»</div>
+    </div>
+    <div class="card" style="text-align:center; color:#a0aec0; padding:40px 20px">
+        <div style="font-size:2rem; margin-bottom:10px">👥</div>
+        <div>Уровни клиентов</div>
+        <div style="font-size:.8rem; margin-top:6px">Нажмите кнопку «Загрузить данные»</div>
+    </div>
+    <div class="card" style="text-align:center; color:#a0aec0; padding:40px 20px">
+        <div style="font-size:2rem; margin-bottom:10px">⏱</div>
+        <div>Интервал заказов</div>
+        <div style="font-size:.8rem; margin-top:6px">Нажмите кнопку «Загрузить данные»</div>
+    </div>
+    <div class="card" style="text-align:center; color:#a0aec0; padding:40px 20px">
+        <div style="font-size:2rem; margin-bottom:10px">🔁</div>
+        <div>Повторные покупки</div>
+        <div style="font-size:.8rem; margin-top:6px">Нажмите кнопку «Загрузить данные»</div>
+    </div>
+</div>
+{% else %}
+
+<!-- ── 1. Топ-10 товаров ─────────────────────────────────────────────────── -->
+<div class="card">
+    <h2>📦 Топ-10 самых покупаемых товаров</h2>
+    {% if stats.top_products %}
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start">
+        <div style="flex:1; min-width:260px; overflow-x:auto">
+            <table>
+                <thead><tr>
+                    <th>#</th>
+                    <th>Товар</th>
+                    <th>Отдел</th>
+                    <th style="text-align:right">Заказов</th>
+                </tr></thead>
+                <tbody>
+                {% for p in stats.top_products %}
+                <tr>
+                    <td style="color:#a0aec0; font-size:.85rem">{{ loop.index }}</td>
+                    <td style="font-weight:500">{{ p.product_name }}</td>
+                    <td style="color:#718096; font-size:.85rem">{{ p.dept }}</td>
+                    <td style="text-align:right; font-weight:600; color:#2b6cb0">{{ "{:,}".format(p.cnt) }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div style="flex:1; min-width:260px; max-width:440px">
+            <canvas id="topChart" height="220"></canvas>
+        </div>
+    </div>
+    {% else %}
+    <p style="color:#a0aec0">Данные недоступны.</p>
+    {% endif %}
+</div>
+
+<!-- ── 2. Уровни клиентов ────────────────────────────────────────────────── -->
+<div class="card">
+    <h2>👥 Распределение клиентов по уровням
+        {% if stats.meta.get('total_users') %}
+        <span style="font-size:.8rem; font-weight:400; color:#718096">
+            · всего {{ "{:,}".format(stats.meta.total_users) }} покупателей
+        </span>
+        {% endif %}
+    </h2>
+    {% if stats.level_distribution %}
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:center">
+        <div style="flex:1; min-width:240px; overflow-x:auto">
+            <table>
+                <thead><tr>
+                    <th>Уровень</th>
+                    <th style="text-align:right">Клиентов</th>
+                    <th style="text-align:right">Доля</th>
+                </tr></thead>
+                <tbody>
+                {% for lv in stats.level_distribution %}
+                <tr>
+                    <td>{{ lv.emoji }} <strong>{{ lv.level }}</strong></td>
+                    <td style="text-align:right">{{ "{:,}".format(lv.count) }}</td>
+                    <td style="text-align:right; color:#2b6cb0; font-weight:600">{{ lv.pct }}%</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <p style="font-size:.75rem; color:#a0aec0; margin-top:8px">
+                * Уровень определяется по количеству заказов:
+                Новичок &lt;20, Постоянный &lt;60, Лояльный &lt;120, VIP ≥120.
+            </p>
+        </div>
+        <div style="flex:0 0 220px; display:flex; flex-direction:column; align-items:center">
+            <canvas id="levelChart" width="200" height="200"></canvas>
+        </div>
+    </div>
+    {% else %}
+    <p style="color:#a0aec0">Данные недоступны.</p>
+    {% endif %}
+</div>
+
+<!-- ── 3. Интервал между заказами ────────────────────────────────────────── -->
+<div class="card">
+    <h2>⏱ Интервал между заказами</h2>
+    {% if stats.order_gap %}
+    {% set g = stats.order_gap %}
+    <div class="stats-row">
+        <div class="stat-box">
+            <div class="val">{{ g.avg_days }}</div>
+            <div class="lbl">Среднее, дней</div>
+        </div>
+        <div class="stat-box">
+            <div class="val">{{ g.min_days|int }}</div>
+            <div class="lbl">Минимум, дней</div>
+        </div>
+        <div class="stat-box">
+            <div class="val">{{ g.max_days|int }}</div>
+            <div class="lbl">Максимум, дней</div>
+        </div>
+        <div class="stat-box" style="background:#f0fff4">
+            <div class="val" style="color:#38a169">
+                {{ "%.1f"|format(g.avg_days / 7) }} нед
+            </div>
+            <div class="lbl">Среднее в неделях</div>
+        </div>
+    </div>
+    <p style="font-size:.82rem; color:#718096; margin-top:6px">
+        По всем пользователям, у которых есть хотя бы один повторный заказ.
+    </p>
+    {% else %}
+    <p style="color:#a0aec0">Данные недоступны.</p>
+    {% endif %}
+</div>
+
+<!-- ── 4. Категории с высоким % повторных покупок ───────────────────────── -->
+<div class="card">
+    <h2>🔁 Категории с высокой долей повторных покупок
+        <span style="font-size:.75rem; font-weight:400; color:#a0aec0; margin-left:6px">оценочно</span>
+    </h2>
+    {% if stats.forgotten_categories %}
+    <p style="font-size:.82rem; color:#718096; margin-bottom:12px">
+        Категории, в которых покупатели чаще всего возвращаются за тем же товаром
+        (только категории с более 1 000 заказов).
+    </p>
+    <div style="overflow-x:auto">
+        <table>
+            <thead><tr>
+                <th>#</th>
+                <th>Категория (aisle)</th>
+                <th style="text-align:right">Всего заказов</th>
+                <th style="text-align:right">Повторных, %</th>
+            </tr></thead>
+            <tbody>
+            {% for cat in stats.forgotten_categories %}
+            <tr>
+                <td style="color:#a0aec0; font-size:.85rem">{{ loop.index }}</td>
+                <td style="font-weight:500">{{ cat.aisle }}</td>
+                <td style="text-align:right; color:#4a5568">{{ "{:,}".format(cat.total_orders) }}</td>
+                <td style="text-align:right">
+                    <span style="display:inline-block; background:{% if cat.reorder_pct >= 80 %}#c6f6d5; color:#276749{% elif cat.reorder_pct >= 60 %}#fefcbf; color:#744210{% else %}#fed7d7; color:#c53030{% endif %}; border-radius:10px; padding:2px 8px; font-size:.82rem; font-weight:600">
+                        {{ cat.reorder_pct }}%
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="color:#a0aec0">Данные недоступны.</p>
+    {% endif %}
+</div>
+
+<!-- ── 5. Выводы Mistral ─────────────────────────────────────────────────── -->
+{% if summary %}
+<div class="card">
+    <h2>🤖 Аналитические выводы</h2>
+    <div class="msg-block msg-purple" style="line-height:1.8">{{ summary }}</div>
+    <div class="cta-row">
+        <button class="btn btn-gray btn-sm" onclick="
+            navigator.clipboard.writeText(document.querySelector('.msg-purple').innerText)
+                .then(() => { this.textContent = '✅ Скопировано'; setTimeout(() => this.textContent = '📋 Копировать', 1800); });
+        ">📋 Копировать</button>
+    </div>
+</div>
+{% endif %}
+
+<!-- Chart.js — Топ-10 горизонтальный бар -->
+{% if stats.top_products %}
+<script>
+(function(){
+    const labels = {{ stats.top_products | map(attribute='product_name') | list | tojson }};
+    const values = {{ stats.top_products | map(attribute='cnt') | list | tojson }};
+    new Chart(document.getElementById('topChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Заказов',
+                data: values,
+                backgroundColor: 'rgba(49,130,206,0.75)',
+                borderColor:     'rgba(43,108,176,1)',
+                borderWidth: 1,
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { beginAtZero: true, ticks: { font: { size: 11 } } },
+                y: { ticks: { font: { size: 11 } } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+
+<!-- Chart.js — Уровни клиентов пончик -->
+{% if stats.level_distribution %}
+<script>
+(function(){
+    const lvLabels = {{ stats.level_distribution | map(attribute='level') | list | tojson }};
+    const lvValues = {{ stats.level_distribution | map(attribute='count') | list | tojson }};
+    new Chart(document.getElementById('levelChart'), {
+        type: 'doughnut',
+        data: {
+            labels: lvLabels,
+            datasets: [{
+                data: lvValues,
+                backgroundColor: ['#68d391','#ecc94b','#fc8181','#b794f4'],
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 10 } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+
+{% endif %}{# end if stats #}
+{% endblock %}

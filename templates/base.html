@@ -147,8 +147,9 @@
     <nav>
         <a href="/" {% if request.path == '/' %}class="active"{% endif %}>Личный кабинет</a>
         {% if session.get('user_id') %}
-        <a href="/history" {% if request.path == '/history' %}class="active"{% endif %}>Мои покупки</a>
-        <a href="/insights" {% if request.path == '/insights' %}class="active"{% endif %}>Аналитика</a>
+        <a href="/history"   {% if request.path == '/history'   %}class="active"{% endif %}>Мои покупки</a>
+        <a href="/insights"  {% if request.path == '/insights'  %}class="active"{% endif %}>Аналитика</a>
+        <a href="/dashboard" {% if request.path == '/dashboard' %}class="active"{% endif %}>Дашборд</a>
         {% endif %}
     </nav>
     <div class="header-user">

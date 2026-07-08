@@ -43,8 +43,9 @@ _GREETINGS = [
 ]
 
 # ── Кэш (SQLite, персистентный, TTL) ─────────────────────────────────────────
-CACHE_TTL_HISTORY = 300   # 5 минут
-CACHE_TTL_MISTRAL = 600   # 10 минут
+CACHE_TTL_HISTORY   = 300    # 5 минут
+CACHE_TTL_MISTRAL   = 600    # 10 минут
+CACHE_TTL_DASHBOARD = 1800   # 30 минут
 
 
 def _cache_conn():
@@ -94,6 +95,15 @@ def cache_clear_user(user_id: int):
     try:
         with _cache_conn() as conn:
             conn.executemany("DELETE FROM cache WHERE key = ?", [(k,) for k in keys])
+    except Exception:
+        pass
+
+
+def cache_clear_dashboard():
+    try:
+        with _cache_conn() as conn:
+            conn.executemany("DELETE FROM cache WHERE key = ?",
+                             [("dashboard_all",), ("dashboard_summary",)])
     except Exception:
         pass
 
@@ -396,3 +406,162 @@ def ask_mistral_best_time(user_id: int, time_data: dict) -> str:
         ],
     )
     return _strip_greeting(resp.choices[0].message.content.strip())
+
+
+# ── Дашборд по всем пользователям ────────────────────────────────────────────
+
+def _dashboard_db():
+    if not os.path.exists(DB_PATH):
+        raise FileNotFoundError(
+            f"Основная БД instacart_db.sqlite не найдена по пути «{DB_PATH}». "
+            "Убедитесь, что файл загружен на сервер."
+        )
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_dashboard_stats() -> dict:
+    cached, hit = _cache_get("dashboard_all")
+    if hit:
+        return {**cached, "from_cache": True}
+
+    result: dict = {
+        "top_products":         [],
+        "level_distribution":   [],
+        "order_gap":            {},
+        "forgotten_categories": [],
+        "meta":                 {},
+        "errors":               [],
+        "from_cache":           False,
+    }
+
+    try:
+        conn = _dashboard_db()
+    except FileNotFoundError as e:
+        result["errors"].append(str(e))
+        return result
+
+    # 1. Топ-10 товаров по всем клиентам
+    try:
+        rows = conn.execute("""
+            SELECT p.product_name,
+                   COALESCE(p.department_rus, p.department) AS dept,
+                   COUNT(*) AS cnt
+            FROM orders_prior op
+            JOIN products p ON op.product_id = p.product_id
+            GROUP BY op.product_id
+            ORDER BY cnt DESC
+            LIMIT 10
+        """).fetchall()
+        result["top_products"] = [dict(r) for r in rows]
+    except Exception as e:
+        result["errors"].append(f"Топ товаров: {e}")
+
+    # 2. Распределение клиентов по уровням (прокси через MAX(order_number))
+    try:
+        row = conn.execute("""
+            SELECT
+                SUM(CASE WHEN orders_cnt < 20  THEN 1 ELSE 0 END) AS newbie,
+                SUM(CASE WHEN orders_cnt >= 20 AND orders_cnt < 60  THEN 1 ELSE 0 END) AS regular,
+                SUM(CASE WHEN orders_cnt >= 60 AND orders_cnt < 120 THEN 1 ELSE 0 END) AS loyal,
+                SUM(CASE WHEN orders_cnt >= 120 THEN 1 ELSE 0 END) AS vip,
+                COUNT(*) AS total_users
+            FROM (
+                SELECT user_id, MAX(order_number) AS orders_cnt
+                FROM orders
+                GROUP BY user_id
+            )
+        """).fetchone()
+        if row:
+            r = dict(row)
+            total = r.get("total_users", 1) or 1
+            result["level_distribution"] = [
+                {"level": "Новичок",    "emoji": "🌱", "count": r.get("newbie",  0),
+                 "pct": round(r.get("newbie",  0) / total * 100, 1)},
+                {"level": "Постоянный", "emoji": "⭐", "count": r.get("regular", 0),
+                 "pct": round(r.get("regular", 0) / total * 100, 1)},
+                {"level": "Лояльный",   "emoji": "🔥", "count": r.get("loyal",   0),
+                 "pct": round(r.get("loyal",   0) / total * 100, 1)},
+                {"level": "VIP",        "emoji": "👑", "count": r.get("vip",     0),
+                 "pct": round(r.get("vip",     0) / total * 100, 1)},
+            ]
+            result["meta"]["total_users"] = total
+    except Exception as e:
+        result["errors"].append(f"Уровни клиентов: {e}")
+
+    # 3. Средний интервал между заказами
+    try:
+        row = conn.execute("""
+            SELECT ROUND(AVG(days_since_prior_order), 1) AS avg_days,
+                   MIN(days_since_prior_order)            AS min_days,
+                   MAX(days_since_prior_order)            AS max_days
+            FROM orders
+            WHERE days_since_prior_order IS NOT NULL
+        """).fetchone()
+        if row:
+            result["order_gap"] = dict(row)
+    except Exception as e:
+        result["errors"].append(f"Интервал заказов: {e}")
+
+    # 4. Категории с высокой долей повторных покупок (оценочно)
+    try:
+        rows = conn.execute("""
+            SELECT p.aisle,
+                   COUNT(*)                           AS total_orders,
+                   ROUND(AVG(op.reordered) * 100, 1) AS reorder_pct
+            FROM orders_prior op
+            JOIN products p ON op.product_id = p.product_id
+            GROUP BY p.aisle
+            HAVING total_orders > 1000
+            ORDER BY reorder_pct DESC, total_orders DESC
+            LIMIT 10
+        """).fetchall()
+        result["forgotten_categories"] = [dict(r) for r in rows]
+    except Exception as e:
+        result["errors"].append(f"Забываемые категории: {e}")
+
+    conn.close()
+    result["meta"]["generated_at"] = time.strftime("%d.%m.%Y %H:%M")
+    _cache_set("dashboard_all",
+               {k: v for k, v in result.items() if k != "from_cache"},
+               CACHE_TTL_DASHBOARD)
+    return result
+
+
+def ask_mistral_dashboard(stats: dict) -> str:
+    cached, hit = _cache_get("dashboard_summary")
+    if hit:
+        return cached
+
+    top     = stats.get("top_products", [])[:5]
+    top_str = ", ".join(r.get("product_name", "?") for r in top)
+    levels  = {r["level"]: r["pct"] for r in stats.get("level_distribution", [])}
+    gap     = stats.get("order_gap", {})
+    total   = stats.get("meta", {}).get("total_users", "?")
+
+    user_message = (
+        f"Аналитическая сводка по всей базе покупателей Instacart.\n\n"
+        f"Всего покупателей: {total}.\n"
+        f"Топ-5 популярных товаров: {top_str}.\n"
+        f"Распределение по уровням лояльности: "
+        f"Новичок — {levels.get('Новичок', '?')}%, "
+        f"Постоянный — {levels.get('Постоянный', '?')}%, "
+        f"Лояльный — {levels.get('Лояльный', '?')}%, "
+        f"VIP — {levels.get('VIP', '?')}%.\n"
+        f"Среднее время между заказами: {gap.get('avg_days', '?')} дней "
+        f"(мин {gap.get('min_days', '?')}, макс {gap.get('max_days', '?')}).\n\n"
+        "Напиши 4–6 предложений деловых выводов на русском языке. "
+        "Опирайся только на переданные цифры, ничего не придумывай. "
+        "Не начинай с приветствия. Стиль — аналитический, нейтральный."
+    )
+    resp = _mistral_client.chat.complete(
+        model=MISTRAL_MODEL,
+        messages=[
+            {"role": "system", "content": "Ты — бизнес-аналитик. Давай краткие точные выводы на основе данных."},
+            {"role": "user",   "content": user_message},
+        ],
+    )
+    summary = _strip_greeting(resp.choices[0].message.content.strip())
+    _cache_set("dashboard_summary", summary, CACHE_TTL_DASHBOARD)
+    return summary
