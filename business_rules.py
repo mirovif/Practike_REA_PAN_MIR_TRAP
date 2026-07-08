@@ -447,12 +447,15 @@ def get_dashboard_stats() -> dict:
         rows = conn.execute("""
             SELECT p.product_name,
                    COALESCE(p.department_rus, p.department) AS dept,
-                   COUNT(*) AS cnt
-            FROM orders_prior op
-            JOIN products p ON op.product_id = p.product_id
-            GROUP BY op.product_id
-            ORDER BY cnt DESC
-            LIMIT 10
+                   sub.cnt
+            FROM (
+                SELECT product_id, COUNT(*) AS cnt
+                FROM orders_prior
+                GROUP BY product_id
+                ORDER BY cnt DESC LIMIT 10
+            ) sub
+            JOIN products p ON sub.product_id = p.product_id
+            ORDER BY sub.cnt DESC
         """).fetchall()
         result["top_products"] = [dict(r) for r in rows]
     except Exception as e:
@@ -505,13 +508,18 @@ def get_dashboard_stats() -> dict:
         result["errors"].append(f"Интервал заказов: {e}")
 
     # 4. Категории с высокой долей повторных покупок (оценочно)
+    # Subquery aggregates by product_id first (uses covering index), then JOINs to get aisle
     try:
         rows = conn.execute("""
             SELECT p.aisle,
-                   COUNT(*)                           AS total_orders,
-                   ROUND(AVG(op.reordered) * 100, 1) AS reorder_pct
-            FROM orders_prior op
-            JOIN products p ON op.product_id = p.product_id
+                   SUM(sub.total)        AS total_orders,
+                   ROUND(SUM(sub.reordered_sum) * 100.0 / SUM(sub.total), 1) AS reorder_pct
+            FROM (
+                SELECT product_id, COUNT(*) AS total, SUM(reordered) AS reordered_sum
+                FROM orders_prior
+                GROUP BY product_id
+            ) sub
+            JOIN products p ON sub.product_id = p.product_id
             GROUP BY p.aisle
             HAVING total_orders > 1000
             ORDER BY reorder_pct DESC, total_orders DESC
