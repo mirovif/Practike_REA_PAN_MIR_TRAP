@@ -449,10 +449,9 @@ def get_dashboard_stats() -> dict:
                    COALESCE(p.department_rus, p.department) AS dept,
                    sub.cnt
             FROM (
-                SELECT product_id, COUNT(*) AS cnt
-                FROM orders_prior
-                GROUP BY product_id
-                ORDER BY cnt DESC LIMIT 10
+                SELECT product_id, total AS cnt
+                FROM product_stats
+                ORDER BY total DESC LIMIT 10
             ) sub
             JOIN products p ON sub.product_id = p.product_id
             ORDER BY sub.cnt DESC
@@ -514,11 +513,7 @@ def get_dashboard_stats() -> dict:
             SELECT p.aisle,
                    SUM(sub.total)        AS total_orders,
                    ROUND(SUM(sub.reordered_sum) * 100.0 / SUM(sub.total), 1) AS reorder_pct
-            FROM (
-                SELECT product_id, COUNT(*) AS total, SUM(reordered) AS reordered_sum
-                FROM orders_prior
-                GROUP BY product_id
-            ) sub
+            FROM product_stats sub
             JOIN products p ON sub.product_id = p.product_id
             GROUP BY p.aisle
             HAVING total_orders > 1000
