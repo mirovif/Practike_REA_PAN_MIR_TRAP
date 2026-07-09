@@ -460,49 +460,28 @@ def get_dashboard_stats() -> dict:
     except Exception as e:
         result["errors"].append(f"Топ товаров: {e}")
 
-    # 2. Распределение клиентов по уровням (прокси через MAX(order_number))
+    # 2. Распределение клиентов по уровням (предрассчитано в dashboard_agg)
     try:
-        row = conn.execute("""
-            SELECT
-                SUM(CASE WHEN orders_cnt < 20  THEN 1 ELSE 0 END) AS newbie,
-                SUM(CASE WHEN orders_cnt >= 20 AND orders_cnt < 60  THEN 1 ELSE 0 END) AS regular,
-                SUM(CASE WHEN orders_cnt >= 60 AND orders_cnt < 120 THEN 1 ELSE 0 END) AS loyal,
-                SUM(CASE WHEN orders_cnt >= 120 THEN 1 ELSE 0 END) AS vip,
-                COUNT(*) AS total_users
-            FROM (
-                SELECT user_id, MAX(order_number) AS orders_cnt
-                FROM orders
-                GROUP BY user_id
-            )
-        """).fetchone()
+        row = conn.execute(
+            "SELECT value FROM dashboard_agg WHERE key = 'level_distribution'"
+        ).fetchone()
         if row:
-            r = dict(row)
-            total = r.get("total_users", 1) or 1
-            result["level_distribution"] = [
-                {"level": "Новичок",    "emoji": "🌱", "count": r.get("newbie",  0),
-                 "pct": round(r.get("newbie",  0) / total * 100, 1)},
-                {"level": "Постоянный", "emoji": "⭐", "count": r.get("regular", 0),
-                 "pct": round(r.get("regular", 0) / total * 100, 1)},
-                {"level": "Лояльный",   "emoji": "🔥", "count": r.get("loyal",   0),
-                 "pct": round(r.get("loyal",   0) / total * 100, 1)},
-                {"level": "VIP",        "emoji": "👑", "count": r.get("vip",     0),
-                 "pct": round(r.get("vip",     0) / total * 100, 1)},
-            ]
-            result["meta"]["total_users"] = total
+            result["level_distribution"] = json.loads(row["value"])
+        row = conn.execute(
+            "SELECT value FROM dashboard_agg WHERE key = 'total_users'"
+        ).fetchone()
+        if row:
+            result["meta"]["total_users"] = int(row["value"])
     except Exception as e:
         result["errors"].append(f"Уровни клиентов: {e}")
 
-    # 3. Средний интервал между заказами
+    # 3. Средний интервал между заказами (предрассчитано в dashboard_agg)
     try:
-        row = conn.execute("""
-            SELECT ROUND(AVG(days_since_prior_order), 1) AS avg_days,
-                   MIN(days_since_prior_order)            AS min_days,
-                   MAX(days_since_prior_order)            AS max_days
-            FROM orders
-            WHERE days_since_prior_order IS NOT NULL
-        """).fetchone()
+        row = conn.execute(
+            "SELECT value FROM dashboard_agg WHERE key = 'order_gap'"
+        ).fetchone()
         if row:
-            result["order_gap"] = dict(row)
+            result["order_gap"] = json.loads(row["value"])
     except Exception as e:
         result["errors"].append(f"Интервал заказов: {e}")
 
